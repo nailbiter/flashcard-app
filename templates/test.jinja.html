@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title></title>
+    <style>
+      .center {
+          width: 100% !important;
+          text-align: center;
+      }
+      form {font-size: 50px; }
+      input {font-size: 50px; }
+    </style>
+    <link rel="stylesheet" href="http://domain.tld/mobile.css" type="text/css" media="handheld" />
+  </head>
+  <body>
+    <pre width="100%" style="font-size: 30px;">
+    question #{{question_i}}
+
+    {{question_text}}
+    </pre>
+    <center style="font-size: 30px;">
+      <form method="post" action="/check_answer">
+              <input type="answer" name="answer" size="20">
+              <input type="submit" value="submit" name="submit"/>
+      </form>
+    </center>
+  </body>
+</html>
+
