@@ -1,0 +1,5 @@
+.question.pickle
+.envrc.secret
+*.swo
+*.swp
+__pycache__
