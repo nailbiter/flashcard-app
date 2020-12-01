@@ -13,10 +13,16 @@ _HISTORY_SIZE = 5
 def _compute_slice_score(slice_df):
     return slice_df.sort_values(by="answer_time", ascending=False)["score"][:_HISTORY_SIZE].min()
 
+def add_logger(f):
+    logger = logging.getLogger(f.__name__)
 
-def get_deck_with_score(deck, question_type):
-    _logger = logging.getLogger("get_deck_with_score")
+    def _f(*args, **kwargs):
+        return f(*args, logger=logger, **kwargs)
+    return _f
 
+
+@add_logger
+def get_deck_with_score(deck, question_type, mongo_url, logger):
     deck_df = pd.DataFrame(deck)
     deck_df["_id"] = deck_df["_id"].apply(str)
     deck_df = pd.concat([
@@ -26,7 +32,10 @@ def get_deck_with_score(deck, question_type):
         in deck_df.to_dict(orient="records")
     ]).set_index(GROUP_BY)
 
-    results_df = pd.DataFrame(MongoClient().alex_flashcards.results.find())
+    results_df = pd.DataFrame(get_mongo_client(mongo_url).alex_flashcards.results.find())
+    if len(results_df)==0:
+        deck_df["score"] = 0.0
+        return deck_df
     results_df = results_df[[tag == question_type for tag in results_df.TAG]]
     results_df["_id"] = results_df["card"]
     results_df.drop(columns=["card"])
@@ -50,9 +59,9 @@ def get_deck_with_score(deck, question_type):
     return deck_df
 
 
-def get_random_question(deck, question_type):
+def get_random_question(deck, question_type, mongo_url):
     _logger = logging.getLogger("get_random_question")
-    deck_df = get_deck_with_score(deck, question_type).reset_index()
+    deck_df = get_deck_with_score(deck, question_type, mongo_url).reset_index()
     records = deck_df.to_dict(orient="records")
     max_weight = 1.0 if (
         min(map(lambda r: r["score"], records)) < 1.0) else 2.0
@@ -72,8 +81,12 @@ def get_random_question(deck, question_type):
     }
 
 
-def get_cards(tags):
-    coll = MongoClient().alex_flashcards.cards
+def get_mongo_client(mongo_url):
+    return MongoClient(*([] if mongo_url is None else [mongo_url]))
+
+
+def get_cards(tags, mongo_url):
+    coll = get_mongo_client(mongo_url).alex_flashcards.cards
     cards = list(coll.find())
     for tag in tags:
         cards = [card for card in cards if len(

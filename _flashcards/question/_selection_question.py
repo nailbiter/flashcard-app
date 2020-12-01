@@ -2,11 +2,12 @@ from _flashcards.question.question import Question
 import logging
 from random import sample, shuffle
 from jinja2 import Template
+import os
 
 
 class _SelectionQuestion(Question):
     TAG = "selection"
-    _NUMBER_OF_ANSWERS = 12
+    _NUMBER_OF_ANSWERS = os.environ.get("SELECTION_QUESTION_ANSWERNUM", 3)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -15,7 +16,7 @@ class _SelectionQuestion(Question):
         self._logger.info(f"card: {self._card}")
         self._answers = []
         other_cards = sample([c for c in self._deck if c["_id"]
-            != self._card["_id"]], self._NUMBER_OF_ANSWERS-1)
+                              != self._card["_id"]], self._NUMBER_OF_ANSWERS-1)
         _aux = ",".join([b for i, b in enumerate(
             self._card["back"]) if i != self._back_index])
         if len(_aux) > 0:
@@ -70,4 +71,4 @@ class _SelectionQuestion(Question):
         """).render(**env)
 
     def get_answer_options(self):
-        return range(1,_SelectionQuestion._NUMBER_OF_ANSWERS+1)
+        return range(1, _SelectionQuestion._NUMBER_OF_ANSWERS+1)

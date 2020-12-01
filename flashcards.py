@@ -32,13 +32,12 @@ TODO:
 
 ==============================================================================="""
 import click
-from pymongo import MongoClient
 import pandas as pd
 from random import choice
 from re import match
 import logging
 from _flashcards.question import get_question_types, get_question
-from _flashcards import get_random_question, get_deck_with_score, GROUP_BY, get_cards
+from _flashcards import get_random_question, get_deck_with_score, GROUP_BY, get_cards, get_mongo_client
 import json
 from math import ceil
 from os.path import splitext
@@ -48,15 +47,16 @@ from os.path import splitext
 @click.option("--tags", multiple=True, envvar="TAGS")
 @click.option("--debug", is_flag=True)
 @click.option("-q", "--question_type", type=click.Choice(get_question_types()), envvar="QUESTION_TYPE")
+@click.option("--mongo-url",envvar="MONGO_URL")
 @click.pass_context
-def flashcards(ctx, tags, question_type, debug=False):
+def flashcards(ctx, debug=False, **kwargs):
     if debug:
         logging.basicConfig(level=logging.INFO)
 
     ctx.ensure_object(dict)
-    ctx.obj["tags"] = tags
-    ctx.obj["question_type"] = question_type
-    ctx.obj["cards"] = get_cards(tags)
+    for k,v in kwargs.items():
+        ctx.obj[k] = v
+    ctx.obj["cards"] = get_cards(ctx.obj["tags"],ctx.obj["mongo_url"])
 
 
 @flashcards.command()
@@ -89,7 +89,7 @@ def show_score(ctx, deck_index, deck_size, full, sort, agg):
             for c in deck]
     _logger.info(f"deck:\n{pd.DataFrame(deck)}")
 
-    deck_df = get_deck_with_score(deck, ctx.obj["question_type"])
+    deck_df = get_deck_with_score(deck, ctx.obj["question_type"],ctx.obj["mongo_url"])
 
     if True:
         deck_df = deck_df.reset_index()
@@ -157,7 +157,7 @@ def test(ctx, deck_index, deck_size, allow_regrade):
     question_i = 0
     while True:
         question_i += 1
-        _d = get_random_question(deck, ctx.obj["question_type"])
+        _d = get_random_question(deck, ctx.obj["question_type"],ctx.obj["mongo_url"])
         question = get_question(
             _d["question_type"], **{k: v for k, v in _d.items() if k != "question_type"})
         print(f"question #{question_i}: \n{question.get_question_text()}")
@@ -170,9 +170,9 @@ def test(ctx, deck_index, deck_size, allow_regrade):
 
         obj = json.loads(question.to_json())
         _logger.info(f"obj: {json.dumps(obj, indent=2, sort_keys=True)}")
-        MongoClient().alex_flashcards.results.insert_one(obj)
+        get_mongo_client(obj.ctx["mongo_url"]).alex_flashcards.results.insert_one(obj)
         _PERCENTILES_COUNT = 11
-        click.echo((get_deck_with_score(deck, ctx.obj["question_type"])["score"]*100.0).describe(
+        click.echo((get_deck_with_score(deck, ctx.obj["question_type"], ctx.obj["mongo_url"])["score"]*100.0).describe(
             percentiles=[i/(_PERCENTILES_COUNT-1) for i in range(1, _PERCENTILES_COUNT-1)]))
 
 
@@ -181,7 +181,7 @@ def test(ctx, deck_index, deck_size, allow_regrade):
 @click.option("--back", multiple=True)
 @click.pass_context
 def add_item(ctx, **kwargs):
-    coll = MongoClient().alex_flashcards.cards
+    coll = get_mongo_client(obj.ctx["mongo_url"]).alex_flashcards.cards
     obj = {"tags": ctx.obj["tags"], **kwargs}
     print(f"inserting {obj}")
     coll.insert_one(obj)
@@ -191,9 +191,9 @@ def add_item(ctx, **kwargs):
 @click.argument("filename", type=click.Path())
 @click.pass_context
 def add_batch(ctx, filename):
-    assert splitext(filename)[1] == ".csv", "filename should be a `.csv` file"
+    assert splitext(filename)[1] in [".csv",".tsv"], "filename should be a `.csv` or `.tsv` file"
     batch = pd.read_csv(filename, sep="\t", header=None)
-    coll = MongoClient().alex_flashcards.cards
+    coll = get_mongo_client(ctx.obj["mongo_url"]).alex_flashcards.cards
     back_size = len(list(batch))-1
     batch = pd.DataFrame({"front": batch[0], "back": map(lambda t: [
                          x for x in t if not pd.isna(x)], zip(*[batch[i+1] for i in range(back_size)]))})
