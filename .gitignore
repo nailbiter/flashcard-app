@@ -3,3 +3,4 @@
 *.swo
 *.swp
 __pycache__
+.envrc.candice.secret
