@@ -1,4 +1,5 @@
 python-telegram-bot
-pymongo
 click
 pandas
+pymongo==3.11.1
+dnspython
