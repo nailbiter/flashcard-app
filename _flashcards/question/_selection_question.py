@@ -7,7 +7,7 @@ import os
 
 class _SelectionQuestion(Question):
     TAG = "selection"
-    _NUMBER_OF_ANSWERS = os.environ.get("SELECTION_QUESTION_ANSWERNUM", 3)
+    _NUMBER_OF_ANSWERS = int(os.environ.get("SELECTION_QUESTION_ANSWERNUM", 3))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
