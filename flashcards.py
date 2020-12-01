@@ -170,7 +170,7 @@ def test(ctx, deck_index, deck_size, allow_regrade):
 
         obj = json.loads(question.to_json())
         _logger.info(f"obj: {json.dumps(obj, indent=2, sort_keys=True)}")
-        get_mongo_client(obj.ctx["mongo_url"]).alex_flashcards.results.insert_one(obj)
+        get_mongo_client(ctx.obj["mongo_url"]).alex_flashcards.results.insert_one(obj)
         _PERCENTILES_COUNT = 11
         click.echo((get_deck_with_score(deck, ctx.obj["question_type"], ctx.obj["mongo_url"])["score"]*100.0).describe(
             percentiles=[i/(_PERCENTILES_COUNT-1) for i in range(1, _PERCENTILES_COUNT-1)]))
@@ -181,7 +181,7 @@ def test(ctx, deck_index, deck_size, allow_regrade):
 @click.option("--back", multiple=True)
 @click.pass_context
 def add_item(ctx, **kwargs):
-    coll = get_mongo_client(obj.ctx["mongo_url"]).alex_flashcards.cards
+    coll = get_mongo_client(ctx.obj["mongo_url"]).alex_flashcards.cards
     obj = {"tags": ctx.obj["tags"], **kwargs}
     print(f"inserting {obj}")
     coll.insert_one(obj)

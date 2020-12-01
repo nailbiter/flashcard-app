@@ -50,12 +50,12 @@ def get_deck_with_score(deck, question_type, mongo_url, logger):
         ])
     # print(results_df)
     results_df = results_df.set_index(GROUP_BY)
-    _logger.info(f"results_df: {results_df}")
+    logger.info(f"results_df: {results_df}")
 
     deck_df = deck_df.join(results_df, how="left")
     deck_df["score"] = deck_df["score"].apply(
         lambda x: 0.0 if pd.isna(x) else x)
-    _logger.info(f"deck_df: {deck_df}")
+    logger.info(f"deck_df: {deck_df}")
     return deck_df
 
 
