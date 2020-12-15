@@ -3,3 +3,4 @@ click
 pandas
 pymongo==3.11.1
 dnspython
+Jinja2==2.11.2

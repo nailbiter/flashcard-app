@@ -41,22 +41,25 @@ from _flashcards import get_random_question, get_deck_with_score, GROUP_BY, get_
 import json
 from math import ceil
 from os.path import splitext
+import os
+import uuid
+import webbrowser
 
 
 @click.group()
 @click.option("--tags", multiple=True, envvar="TAGS")
 @click.option("--debug", is_flag=True)
 @click.option("-q", "--question_type", type=click.Choice(get_question_types()), envvar="QUESTION_TYPE")
-@click.option("--mongo-url",envvar="MONGO_URL")
+@click.option("--mongo-url", envvar="MONGO_URL")
 @click.pass_context
 def flashcards(ctx, debug=False, **kwargs):
     if debug:
         logging.basicConfig(level=logging.INFO)
 
     ctx.ensure_object(dict)
-    for k,v in kwargs.items():
+    for k, v in kwargs.items():
         ctx.obj[k] = v
-    ctx.obj["cards"] = get_cards(ctx.obj["tags"],ctx.obj["mongo_url"])
+    ctx.obj["cards"] = get_cards(ctx.obj["tags"], ctx.obj["mongo_url"])
 
 
 @flashcards.command()
@@ -89,7 +92,8 @@ def show_score(ctx, deck_index, deck_size, full, sort, agg):
             for c in deck]
     _logger.info(f"deck:\n{pd.DataFrame(deck)}")
 
-    deck_df = get_deck_with_score(deck, ctx.obj["question_type"],ctx.obj["mongo_url"])
+    deck_df = get_deck_with_score(
+        deck, ctx.obj["question_type"], ctx.obj["mongo_url"])
 
     if True:
         deck_df = deck_df.reset_index()
@@ -142,38 +146,58 @@ def _repl_loop(callback, prompt):
 @click.option("--deck-size", type=int, default=5, envvar="DECK_SIZE")
 @click.option("--deck-index", type=int, default=-1, envvar="DECK_INDEX")
 @click.option("--allow-regrade/--no-allow-regrade", default=False)
+@click.option("-i", "--interface", type=click.Choice(["cli", "flask"], case_sensitive=False), default="CLI", envvar="FLASHCARD__TEST__INTERFACE")
 @click.pass_context
-def test(ctx, deck_index, deck_size, allow_regrade):
-    _logger = logging.getLogger("test")
-    cards = ctx.obj["cards"]
-    _logger.info(f"{int(len(cards)/deck_size)+1} decks")
-    assert deck_index >= 0
+def test(ctx, deck_index, deck_size, allow_regrade, interface):
+    if interface == "cli":
+        _logger = logging.getLogger("test")
+        cards = ctx.obj["cards"]
+        _logger.info(f"{int(len(cards)/deck_size)+1} decks")
+        assert deck_index >= 0
 
-    deck = cards[deck_size*deck_index:deck_size*(deck_index+1)]
-    deck = [{k: v for k, v in c.items() if k not in ["tags"]}
-            for c in deck]
-    assert(len(deck) > 0)
-    _logger.info(f"deck:\n{pd.DataFrame(deck)}")
-    question_i = 0
-    while True:
-        question_i += 1
-        _d = get_random_question(deck, ctx.obj["question_type"],ctx.obj["mongo_url"])
-        question = get_question(
-            _d["question_type"], **{k: v for k, v in _d.items() if k != "question_type"})
-        print(f"question #{question_i}: \n{question.get_question_text()}")
-        res, msg = _repl_loop(question.grade, "answer")
+        deck = cards[deck_size*deck_index:deck_size*(deck_index+1)]
+        deck = [{k: v for k, v in c.items() if k not in ["tags"]}
+                for c in deck]
+        assert(len(deck) > 0)
+        _logger.info(f"deck:\n{pd.DataFrame(deck)}")
+        question_i = 0
+        while True:
+            question_i += 1
+            _d = get_random_question(
+                deck, ctx.obj["question_type"], ctx.obj["mongo_url"])
+            question = get_question(
+                _d["question_type"], **{k: v for k, v in _d.items() if k != "question_type"})
+            print(f"question #{question_i}: \n{question.get_question_text()}")
+            res, msg = _repl_loop(question.grade, "answer")
 
-        regrade_text = question.get_regrade_text()
-        if regrade_text is not None and allow_regrade and res < 1.0:
-            print(regrade_text)
-            res, msg = _repl_loop(question.regrade, "regrade")
+            regrade_text = question.get_regrade_text()
+            if regrade_text is not None and allow_regrade and res < 1.0:
+                print(regrade_text)
+                res, msg = _repl_loop(question.regrade, "regrade")
 
-        obj = json.loads(question.to_json())
-        _logger.info(f"obj: {json.dumps(obj, indent=2, sort_keys=True)}")
-        get_mongo_client(ctx.obj["mongo_url"]).alex_flashcards.results.insert_one(obj)
-        _PERCENTILES_COUNT = 11
-        click.echo((get_deck_with_score(deck, ctx.obj["question_type"], ctx.obj["mongo_url"])["score"]*100.0).describe(
-            percentiles=[i/(_PERCENTILES_COUNT-1) for i in range(1, _PERCENTILES_COUNT-1)]))
+            obj = json.loads(question.to_json())
+            _logger.info(f"obj: {json.dumps(obj, indent=2, sort_keys=True)}")
+            get_mongo_client(ctx.obj["mongo_url"]
+                             ).alex_flashcards.results.insert_one(obj)
+            _PERCENTILES_COUNT = 11
+            click.echo((get_deck_with_score(deck, ctx.obj["question_type"], ctx.obj["mongo_url"])["score"]*100.0).describe(
+                percentiles=[i/(_PERCENTILES_COUNT-1) for i in range(1, _PERCENTILES_COUNT-1)]))
+    elif interface == "flask":
+        obj = {
+            "ctx": {"obj": {k: v for k, v in ctx.obj.items() if k != "cards"}},
+            "deck_index": deck_index,
+            "deck_size": deck_size,
+            "allow_regrade": allow_regrade,
+        }
+        fn = f"/tmp/{uuid.uuid4()}.json"
+        with open(fn, "w") as f:
+            json.dump(obj, f)
+        port = "5001"
+        webbrowser.open_new(f'http://127.0.0.1:{port}/test/{fn}')
+        os.system(
+            f"""env FLASK_APP=_flashcards/flask.py flask run -p {port}""")
+    else:
+        raise NotImplementedError(interface)
 
 
 @flashcards.command()
@@ -191,7 +215,8 @@ def add_item(ctx, **kwargs):
 @click.argument("filename", type=click.Path())
 @click.pass_context
 def add_batch(ctx, filename):
-    assert splitext(filename)[1] in [".csv",".tsv"], "filename should be a `.csv` or `.tsv` file"
+    assert splitext(filename)[1] in [
+        ".csv", ".tsv"], "filename should be a `.csv` or `.tsv` file"
     batch = pd.read_csv(filename, sep="\t", header=None)
     coll = get_mongo_client(ctx.obj["mongo_url"]).alex_flashcards.cards
     back_size = len(list(batch))-1
